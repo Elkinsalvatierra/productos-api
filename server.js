@@ -5,6 +5,7 @@ require('./database');
 
 const authRoutes = require('./routes/authRoutes');
 const productosRoutes = require('./routes/productosRoutes');
+const favoritosRoutes = require('./routes/favoritosRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +23,7 @@ app.use('/auth', authRoutes);
 
 // Rutas protegidas de productos
 app.use('/productos', productosRoutes);
+app.use('/favoritos', favoritosRoutes);
 
 app.listen(PORT, () => {
   console.log(

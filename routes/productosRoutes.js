@@ -1,153 +1,210 @@
 const express = require('express');
 const db = require('../database');
 const verificarToken = require('../middleware/auth');
+const verificarRol = require('../middleware/roles');
 
 const router = express.Router();
 
-// Proteger todas las rutas de productos
-router.use(verificarToken);
-
-// Validar los datos de un producto
+// VALIDAR LOS DATOS DEL PRODUCTO
 function validarProducto(datos) {
-  const { nombre, precio, stock } = datos || {};
+  const { nombre, descripcion, categoria, precio } = datos || {};
 
-  if (
-    typeof nombre !== 'string' ||
-    !nombre.trim() ||
-    typeof precio !== 'number' ||
-    !Number.isFinite(precio) ||
-    precio < 0 ||
-    !Number.isInteger(stock) ||
-    stock < 0
-  ) {
-    return false;
-  }
-
-  return true;
+  return (
+    typeof nombre === 'string' &&
+    nombre.trim().length > 0 &&
+    typeof descripcion === 'string' &&
+    descripcion.trim().length > 0 &&
+    typeof categoria === 'string' &&
+    categoria.trim().length > 0 &&
+    typeof precio === 'number' &&
+    Number.isFinite(precio) &&
+    precio > 0
+  );
 }
 
-// CREAR PRODUCTO
-router.post('/', (req, res) => {
-  if (!validarProducto(req.body)) {
-    return res.status(400).json({
-      error: 'Nombre, precio y stock válidos son obligatorios'
-    });
+// LISTAR PRODUCTOS (PÚBLICO)
+router.get('/', (req, res) => {
+  const { categoria } = req.query;
+
+  let sql = 'SELECT * FROM productos';
+  let parametros = [];
+
+  if (categoria) {
+    sql += ' WHERE LOWER(categoria) = LOWER(?)';
+    parametros.push(categoria.trim());
   }
 
-  const { nombre, precio, stock } = req.body;
-
-  db.run(
-    'INSERT INTO productos (nombre, precio, stock) VALUES (?, ?, ?)',
-    [nombre.trim(), precio, stock],
-    function (err) {
-      if (err) {
-        return res.status(500).json({
-          error: 'Error al crear producto'
-        });
-      }
-
-      res.status(201).json({
-        mensaje: 'Producto creado',
-        id: this.lastID
-      });
-    }
-  );
-});
-
-// LISTAR PRODUCTOS
-router.get('/', (req, res) => {
-  db.all('SELECT * FROM productos', [], (err, rows) => {
+  db.all(sql, parametros, (err, rows) => {
     if (err) {
       return res.status(500).json({
         error: 'Error al consultar productos'
       });
     }
 
-    res.status(200).json(rows);
+    return res.status(200).json(rows);
   });
 });
 
-// BUSCAR PRODUCTO POR ID
+// BUSCAR PRODUCTO POR ID (PÚBLICO)
 router.get('/:id', (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({
+      error: 'ID de producto inválido'
+    });
+  }
+
   db.get(
     'SELECT * FROM productos WHERE id = ?',
-    [req.params.id],
-    (err, row) => {
+    [id],
+    (err, producto) => {
       if (err) {
         return res.status(500).json({
           error: 'Error al buscar producto'
         });
       }
 
-      if (!row) {
+      if (!producto) {
         return res.status(404).json({
           error: 'Producto no encontrado'
         });
       }
 
-      res.status(200).json(row);
+      return res.status(200).json(producto);
     }
   );
 });
 
-// ACTUALIZAR PRODUCTO
-router.put('/:id', (req, res) => {
-  if (!validarProducto(req.body)) {
-    return res.status(400).json({
-      error: 'Nombre, precio y stock válidos son obligatorios'
-    });
+// CREAR PRODUCTO (SOLO ADMIN)
+router.post(
+  '/',
+  verificarToken,
+  verificarRol('admin'),
+  (req, res) => {
+    if (!validarProducto(req.body)) {
+      return res.status(400).json({
+        error: 'Nombre, descripción, categoría y precio mayor que cero son obligatorios'
+      });
+    }
+
+    const { nombre, descripcion, categoria, precio } = req.body;
+
+    db.run(
+      `INSERT INTO productos (nombre, descripcion, categoria, precio)
+       VALUES (?, ?, ?, ?)`,
+      [
+        nombre.trim(),
+        descripcion.trim(),
+        categoria.trim(),
+        precio
+      ],
+      function (err) {
+        if (err) {
+          return res.status(500).json({
+            error: 'Error al crear producto'
+          });
+        }
+
+        return res.status(201).json({
+          mensaje: 'Producto creado correctamente',
+          id: this.lastID
+        });
+      }
+    );
   }
+);
 
-  const { nombre, precio, stock } = req.body;
+// ACTUALIZAR PRODUCTO (SOLO ADMIN)
+router.put(
+  '/:id',
+  verificarToken,
+  verificarRol('admin'),
+  (req, res) => {
+    const id = Number(req.params.id);
 
-  db.run(
-    `UPDATE productos
-     SET nombre = ?, precio = ?, stock = ?
-     WHERE id = ?`,
-    [nombre.trim(), precio, stock, req.params.id],
-    function (err) {
-      if (err) {
-        return res.status(500).json({
-          error: 'Error al actualizar producto'
-        });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({
-          error: 'Producto no encontrado'
-        });
-      }
-
-      res.status(200).json({
-        mensaje: 'Producto actualizado'
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        error: 'ID de producto inválido'
       });
     }
-  );
-});
 
-// ELIMINAR PRODUCTO
-router.delete('/:id', (req, res) => {
-  db.run(
-    'DELETE FROM productos WHERE id = ?',
-    [req.params.id],
-    function (err) {
-      if (err) {
-        return res.status(500).json({
-          error: 'Error al eliminar producto'
-        });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({
-          error: 'Producto no encontrado'
-        });
-      }
-
-      res.status(200).json({
-        mensaje: 'Producto eliminado'
+    if (!validarProducto(req.body)) {
+      return res.status(400).json({
+        error: 'Nombre, descripción, categoría y precio mayor que cero son obligatorios'
       });
     }
-  );
-});
+
+    const { nombre, descripcion, categoria, precio } = req.body;
+
+    db.run(
+      `UPDATE productos
+       SET nombre = ?, descripcion = ?, categoria = ?, precio = ?
+       WHERE id = ?`,
+      [
+        nombre.trim(),
+        descripcion.trim(),
+        categoria.trim(),
+        precio,
+        id
+      ],
+      function (err) {
+        if (err) {
+          return res.status(500).json({
+            error: 'Error al actualizar producto'
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            error: 'Producto no encontrado'
+          });
+        }
+
+        return res.status(200).json({
+          mensaje: 'Producto actualizado correctamente'
+        });
+      }
+    );
+  }
+);
+
+// ELIMINAR PRODUCTO (SOLO ADMIN)
+router.delete(
+  '/:id',
+  verificarToken,
+  verificarRol('admin'),
+  (req, res) => {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        error: 'ID de producto inválido'
+      });
+    }
+
+    db.run(
+      'DELETE FROM productos WHERE id = ?',
+      [id],
+      function (err) {
+        if (err) {
+          return res.status(500).json({
+            error: 'Error al eliminar producto'
+          });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({
+            error: 'Producto no encontrado'
+          });
+        }
+
+        return res.status(200).json({
+          mensaje: 'Producto eliminado correctamente'
+        });
+      }
+    );
+  }
+);
 
 module.exports = router;
