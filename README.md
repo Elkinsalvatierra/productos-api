@@ -16,7 +16,7 @@ API REST desarrollada con Node.js, Express y SQLite, que permite administrar pro
 
 ## Instalación
 1. Clonar el repositorio:
-   git clone https://github.com/Elkinsalvatierra/api-productos.git
+   git clone [https://github.com/Elkinsalvatierra/productos-api.git]
 
 2. Entrar en la carpeta:
    cd api-productos
